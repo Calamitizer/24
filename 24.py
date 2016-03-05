@@ -18,7 +18,7 @@ class PNC:
         self.colors = {'R': (255,0,0), 'G': (0,255,0), 'B': (0,0,255)}
         self.toolcolors = {'C': (0,255,255), 'M': (255,0,255), 'Y': (255,255,0)}
         self.matches = {'C': ['G','B'], 'M': ['R','B'], 'Y': ['R','G']}
-        self.grid = 4
+        self.grid = 2
         self.buttonsize = 256
         self.colordirs = {
             'R': (0, self.buttonsize/4),
@@ -121,6 +121,7 @@ class PNC:
         self.tilegroup = pygame.sprite.Group()
         self.colorlists = {}
         self.colorgroups = {}
+        self.layoutdict = {}
         for c in self.colors:
             self.init_color(c)
             
@@ -135,6 +136,7 @@ class PNC:
     def init_color(self, c):
         self.colorlists[c] = list()
         self.colorgroups[c] = pygame.sprite.Group()
+        self.layoutdict[c] = list()
         for i in xrange(1, self.grid**2):
             tile = (Number_Tile(c,i))
             self.tilelist.append(tile)
@@ -153,22 +155,24 @@ class PNC:
         self.won = 0
         for c in self.colors:
             layout = list(self.colorlists[c])
+            layout.append(None)
             if s:
                 random.shuffle(layout)
                 if not self.is_solvable(layout):
                     layout[0], layout[1] = layout[1], layout[0]
-            self.layout = layout
+            self.layoutdict[c] = layout
             for i, tile in enumerate(layout):
-                tile.i, tile.j = self.to2D(i)
+                if tile != None:
+                    tile.i, tile.j = self.to2D(i)
     
     def is_solvable(self, layout):
-        return self.count_inv([tile.n for tile in layout]) % 2 == 0
+        return self.count_inv([tile.n if tile != None else 0 for tile in layout]) % 2 == 0
     
     def count_inv(self, order):
         inv = 0
         for i, n in enumerate(order):
             for _, m in enumerate(order[i+1:]):
-                if n > m:
+                if n > m: # and m != 0:
                     inv += 1
         return inv
     
@@ -260,7 +264,7 @@ class PNC:
         textpos = text.get_rect(bottomleft=(0,self.height))
         self.screen.blit(text,textpos)
         
-        text = self.sysfont.render('Inv: {0:.0f}, Won: {1:.0f}'.format(self.count_inv([tile.n for tile in self.layout]), self.won), 1, (255,0,0))
+        text = self.sysfont.render('Inv: {0:.0f}, Won: {1:.0f}'.format(0, self.won), 1, (255,0,0))
         textpos = text.get_rect(bottomright=(self.width,self.height))
         self.screen.blit(text,textpos)
         
