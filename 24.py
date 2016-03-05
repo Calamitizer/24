@@ -16,8 +16,8 @@ class PNC:
         self.running = True
         self.screen = None
         self.colors = {'R': (255,0,0), 'G': (0,255,0), 'B': (0,0,255)}
-        self.toolcolors = {'C': (0,255,255), 'M': (255,0,255), 'Y': (255,255,0)}
-        self.matches = {'C': ['G','B'], 'M': ['R','B'], 'Y': ['R','G']}
+        self.toolcolors = {'C': (0,255,255), 'M': (255,0,255), 'Y': (255,255,0), 'W': (255,255,255)}
+        self.matches = {'C': ['G','B'], 'M': ['R','B'], 'Y': ['R','G'], 'W': ['R','G','B']}
         self.grid = 2
         self.buttonsize = 256
         self.colordirs = {
@@ -101,7 +101,7 @@ class PNC:
 
     def init_tools(self):
         self.toolgroup = pygame.sprite.GroupSingle()
-        self.change_tool('C')
+        self.change_tool('W')
         
     def change_tool(self, c):
         print c
