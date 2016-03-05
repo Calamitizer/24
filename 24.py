@@ -397,7 +397,8 @@ class Tool(pygame.sprite.Sprite):
         self.image = pygame.Surface((self.size, self.size)).convert()
         colorkey = self.image.get_at((0,0))
         self.image.set_colorkey(colorkey, RLEACCEL)
-        pygame.draw.circle(self.image, PNC.toolcolors[self.color], (self.size/2, self.size/2), self.size/2)
+        pygame.draw.circle(self.image, (1,1,1), (self.size/2, self.size/2), self.size/2)
+        pygame.draw.circle(self.image, PNC.toolcolors[self.color], (self.size/2, self.size/2), self.size/2 - 4)
         self.rect = self.image.get_rect()
 
     def update(self):
