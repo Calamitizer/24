@@ -166,13 +166,20 @@ class PNC:
                     tile.i, tile.j = self.to2D(i)
     
     def is_solvable(self, layout):
-        return self.count_inv([tile.n if tile != None else 0 for tile in layout]) % 2 == 0
-    
-    def count_inv(self, order):
+        inv = self.count_inv(layout)
+        g = self.grid
+        if g % 2 == 1:
+            return inv % 2 == 0
+        elif g % 2 == 0:
+            b = g - self.to2D(layout.index(None))[1]
+            return inv % 2 != b % 2
+
+    def count_inv(self, layout):
+        order = [tile.n if tile != None else 0 for tile in layout]
         inv = 0
         for i, n in enumerate(order):
             for _, m in enumerate(order[i+1:]):
-                if n > m: # and m != 0:
+                if n > m and m != 0:
                     inv += 1
         return inv
     
