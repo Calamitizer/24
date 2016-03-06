@@ -15,8 +15,18 @@ class PNC:
     def __init__(self):
         self.running = True
         self.screen = None
-        self.colors = {'R': (255,0,0), 'G': (0,255,0), 'B': (0,0,255)}
-        self.toolcolors = {'C': (0,255,255), 'M': (255,0,255), 'Y': (255,255,0), 'W': (255,255,255)}
+        self.allcolors = {
+            'K': Color((0,0,0)),
+            'R': Color((255,0,0)),
+            'G': Color((0,255,0)),
+            'B': Color((0,0,255)),
+            'C': Color((0,255,255)),
+            'M': Color((255,0,255)),
+            'Y': Color((255,255,0)),
+            'W': Color((255,255,255)),
+        } 
+        self.tilecolors = {'R': self.allcolors['R'], 'G': self.allcolors['G'], 'B': self.allcolors['B']}
+        self.toolcolors = {'C': self.allcolors['C'], 'M': self.allcolors['M'], 'Y': self.allcolors['Y'], 'W': self.allcolors['W']}
         self.matches = {'C': ['G','B'], 'M': ['R','B'], 'Y': ['R','G'], 'W': ['R','G','B']}
         self.grid = 2
         self.buttonsize = 256
@@ -25,7 +35,7 @@ class PNC:
             'B': tuple(map(int, ((self.buttonsize/4) * (-1 * math.sqrt(3./4.)),(self.buttonsize/4) * (-1./2.)))),
             'G': tuple(map(int, ((self.buttonsize/4) * (math.sqrt(3./4.)),(self.buttonsize/4) * (-1./2.))))}
         self.size = self.width, self.height = self.grid * self.buttonsize, self.grid * self.buttonsize
-        self.colorkeys = {K_1: 'C', K_2: 'M', K_3: 'Y'}
+        self.colorkeys = {K_1: 'C', K_2: 'M', K_3: 'Y', K_4: 'W'}
         self.version = '0.01'
         self.title = '27' + ' v' + self.version 
         self.fps = 30
@@ -122,7 +132,7 @@ class PNC:
         self.colorlists = {}
         self.colorgroups = {}
         self.layoutdict = {}
-        for c in self.colors:
+        for c in self.tilecolors:
             self.init_color(c)
             
         # refactor
@@ -153,14 +163,23 @@ class PNC:
     
     def shuffle(self, s):
         self.won = 0
-        for c in self.colors:
+        for c in self.tilecolors:
             layout = list(self.colorlists[c])
             layout.append(None)
             if s:
                 random.shuffle(layout)
                 if not self.is_solvable(layout):
-                    layout[0], layout[1] = layout[1], layout[0]
+                    print `False` + `c` + ': ' + `[tile.n if tile != None else 0 for tile in layout]`
+                    n = layout.index(None)
+                    if n == 0:
+                        i, j = 1, 2
+                    elif n == 1:
+                        i, j = 0, 2
+                    else:
+                        i, j = 0, 1
+                    layout[j], layout[i] = layout[i], layout[j]
             self.layoutdict[c] = layout
+            print `c` + ': ' + `[tile.n if tile != None else 0 for tile in layout]`
             for i, tile in enumerate(layout):
                 if tile != None:
                     tile.i, tile.j = self.to2D(i)
@@ -313,6 +332,43 @@ class PNC:
     def quit(self):
         self.running = False
 
+class Color:
+    def __init__(self, (r, g, b)):
+        self.r = r
+        self.g = g
+        self.b = b
+        self.h = (self.r, self.g, self.b)
+    def __str__(self):
+        return `self.h`
+    def __repr__(self):
+        return 'Color({0})'.format(self.h)
+    def __add__(self,rhs):
+        r = min(self.r + rhs.r, 255)
+        g = min(self.g + rhs.g, 255)
+        b = min(self.b + rhs.b, 255)
+        return Color((r, g, b))
+    def __sub__(self, rhs):
+        r = max(self.r - rhs.r, 0)
+        g = max(self.g - rhs.g, 0)
+        b = max(self.b - rhs.b, 0)
+        return Color((r, g, b))
+    def __eq__(self, rhs):
+        return self.h == rhs.h
+    def __ne__(self, rhs):
+        return not self.__eq__(rhs)
+    def __gt__(self, other):
+        self._illegal('>')
+    def __ge__(self, other):
+        self._illegal('>=')
+    def __lt__(self, other):
+        self._illegal('<')
+    def __le__(self, other):
+        self._illegal('<=')
+    def __nonzero__(self):
+        return bool(self.h == (0, 0, 0))
+    def _illegal(self, op):
+        print 'Illegal operation "%s" for cyclic integers' % op
+
 class MenuOption(pygame.sprite.Sprite):
     """An button on the pause menu"""
     def __init__(self, name):
@@ -398,7 +454,7 @@ class Tool(pygame.sprite.Sprite):
         colorkey = self.image.get_at((0,0))
         self.image.set_colorkey(colorkey, RLEACCEL)
         pygame.draw.circle(self.image, (1,1,1), (self.size/2, self.size/2), self.size/2)
-        pygame.draw.circle(self.image, PNC.toolcolors[self.color], (self.size/2, self.size/2), self.size/2 - 4)
+        pygame.draw.circle(self.image, PNC.toolcolors[self.color].h, (self.size/2, self.size/2), self.size/2 - 4)
         self.rect = self.image.get_rect()
 
     def update(self):
@@ -420,7 +476,7 @@ class Tile_Space(pygame.sprite.Sprite):
         self.get_image()
 
     def get_colors(self):
-        for c in PNC.colors:
+        for c in PNC.tilecolors:
             tile = PNC.find_tile(c, self.i, self.j)
             if tile:
                 self.add_color(c)
@@ -437,9 +493,9 @@ class Tile_Space(pygame.sprite.Sprite):
 
     def get_image(self):
         self.image = pygame.Surface((PNC.buttonsize,PNC.buttonsize)).convert()
-        r = PNC.colors['R'] if 'R' in self.colors else (0,0,0)
-        g = PNC.colors['G'] if 'G' in self.colors else (0,0,0)
-        b = PNC.colors['B'] if 'B' in self.colors else (0,0,0)
+        r = PNC.tilecolors['R'].h if 'R' in self.colors else PNC.allcolors['K'].h
+        g = PNC.tilecolors['G'].h if 'G' in self.colors else PNC.allcolors['K'].h
+        b = PNC.tilecolors['B'].h if 'B' in self.colors else PNC.allcolors['K'].h
         color = tuple(map(sum, zip(r, g, b)))
         color = tuple(255 - v for v in color)
         self.image.fill(color)
@@ -450,7 +506,7 @@ class Tile_Space(pygame.sprite.Sprite):
     def render_font(self):
         for c in self.colors:
             tile = PNC.find_tile(c, self.i, self.j)
-            text = self.font.render(`tile.n`, 1, PNC.colors[c])
+            text = self.font.render(`tile.n`, 1, PNC.tilecolors[c].h)
             rect = text.get_rect()
             x = PNC.buttonsize/2 - PNC.colordirs[c][0]
             y = PNC.buttonsize/2 - PNC.colordirs[c][1]
