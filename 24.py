@@ -25,9 +25,23 @@ class PNC:
             'Y': Color((255,255,0)),
             'W': Color((255,255,255)),
         } 
-        self.tilecolors = {'R': self.allcolors['R'], 'G': self.allcolors['G'], 'B': self.allcolors['B']}
-        self.toolcolors = {'C': self.allcolors['C'], 'M': self.allcolors['M'], 'Y': self.allcolors['Y'], 'W': self.allcolors['W']}
-        self.matches = {'C': ['G','B'], 'M': ['R','B'], 'Y': ['R','G'], 'W': ['R','G','B']}
+        self.tilecolors = {
+            'R': self.allcolors['R'],
+            'G': self.allcolors['G'],
+            'B': self.allcolors['B']
+        }
+        self.toolcolors = {
+            'C': self.allcolors['C'],
+            'M': self.allcolors['M'],
+            'Y': self.allcolors['Y'],
+            'W': self.allcolors['W']
+        }
+        self.matches = {
+            'C': ['G','B'],
+            'M': ['R','B'],
+            'Y': ['R','G'],
+            'W': ['R','G','B']
+        }
         self.grid = 2
         self.buttonsize = 256
         self.colordirs = {
@@ -342,11 +356,17 @@ class Color:
         return `self.h`
     def __repr__(self):
         return 'Color({0})'.format(self.h)
-    def __add__(self,rhs):
+    def __hash__(self):
+        return hash(self.h)
+    def __neg__(self):
+        return Color((255 - self.r, 255 - self.g, 255 - self.b))
+    def __add__(self, rhs):
         r = min(self.r + rhs.r, 255)
         g = min(self.g + rhs.g, 255)
         b = min(self.b + rhs.b, 255)
         return Color((r, g, b))
+    def __radd__(self, rhs):
+        return self.__add__(rhs)
     def __sub__(self, rhs):
         r = max(self.r - rhs.r, 0)
         g = max(self.g - rhs.g, 0)
@@ -356,18 +376,8 @@ class Color:
         return self.h == rhs.h
     def __ne__(self, rhs):
         return not self.__eq__(rhs)
-    def __gt__(self, other):
-        self._illegal('>')
-    def __ge__(self, other):
-        self._illegal('>=')
-    def __lt__(self, other):
-        self._illegal('<')
-    def __le__(self, other):
-        self._illegal('<=')
     def __nonzero__(self):
         return bool(self.h == (0, 0, 0))
-    def _illegal(self, op):
-        print 'Illegal operation "%s" for cyclic integers' % op
 
 class MenuOption(pygame.sprite.Sprite):
     """An button on the pause menu"""
@@ -465,13 +475,18 @@ class Tile_Space(pygame.sprite.Sprite):
     def __init__(self, i, j):
         pygame.sprite.Sprite.__init__(self)
         self.fontstyle = None
+        self.bfontstyle = self.fontstyle
         self.fontsize = 72
+        self.bfontsize = self.fontsize
+        self.outline = 4
         self.i = i
         self.j = j
         self.x = self.i * PNC.buttonsize
         self.y = self.j * PNC.buttonsize
         self.colors = set()
         self.font = pygame.font.Font(self.fontstyle, self.fontsize)
+        self.bfont = pygame.font.Font(self.bfontstyle, self.bfontsize)
+        self.bfont.set_bold(True)
         self.get_colors()
         self.get_image()
 
@@ -493,25 +508,41 @@ class Tile_Space(pygame.sprite.Sprite):
 
     def get_image(self):
         self.image = pygame.Surface((PNC.buttonsize,PNC.buttonsize)).convert()
-        r = PNC.tilecolors['R'].h if 'R' in self.colors else PNC.allcolors['K'].h
-        g = PNC.tilecolors['G'].h if 'G' in self.colors else PNC.allcolors['K'].h
-        b = PNC.tilecolors['B'].h if 'B' in self.colors else PNC.allcolors['K'].h
-        color = tuple(map(sum, zip(r, g, b)))
-        color = tuple(255 - v for v in color)
-        self.image.fill(color)
+        color = PNC.allcolors['W'] - reduce(lambda x,y: x + y, map(lambda x: PNC.allcolors[x], self.colors), PNC.allcolors['K'])
+        self.image.fill(color.h)
         self.rect = self.image.get_rect()
         self.rect.topleft = (self.x, self.y)
         self.render_font()
-
+    
     def render_font(self):
         for c in self.colors:
-            tile = PNC.find_tile(c, self.i, self.j)
-            text = self.font.render(`tile.n`, 1, PNC.tilecolors[c].h)
+            text = self.get_number_text(c, `PNC.find_tile(c, self.i, self.j).n`)
             rect = text.get_rect()
             x = PNC.buttonsize/2 - PNC.colordirs[c][0]
             y = PNC.buttonsize/2 - PNC.colordirs[c][1]
             rect.center = (x, y)
             self.image.blit(text, rect)
+
+    def get_number_text(self, c, n):
+        fontcolor = PNC.tilecolors[c]
+        outlinecolor = PNC.allcolors['K']
+        notcolor = Color((127,127,127))
+        colortext = self.font.render(n, 0, fontcolor.h, notcolor.h)
+        colortext.set_colorkey(notcolor.h)
+        outlinetext = self.font.render(n, 0, outlinecolor.h, notcolor.h)
+        outlinetext.set_colorkey(notcolor.h)
+        size = (colortext.get_width() + self.outline*2, colortext.get_height() + self.outline*2)
+        image = pygame.Surface(size, 16)
+        image.set_colorkey(notcolor.h)
+        image.fill(notcolor.h)
+        
+        coords = [(i, j) for (i, j) in itertools.product(xrange(self.outline*2+1), xrange(self.outline*2+1)) if 1 <= abs(i - self.outline) + abs(j - self.outline) <= self.outline]
+        
+        for coord in coords:
+            image.blit(outlinetext, coord)
+        
+        image.blit(colortext, (self.outline,self.outline))
+        return image
 
     def update(self):
         self.get_colors()
@@ -529,12 +560,17 @@ class Number_Tile(pygame.sprite.Sprite):
         self.font = self.dfont = None
         self.fontsize = self.dfontsize = 36
         self.fontcolor = self.dfontcolor = (250,250,250)
+        self.width = PNC.buttonsize
+        self.height = PNC.buttonsize
         self.i = 0
         self.j = 0
         self.x = 0
         self.y = 0
-        self.get_image()
-        self.render_font()
+        self.moving = 0
+        self.nexti = 0
+        self.nextj = 0
+        self.progress = 0
+        self.animspeed = self.width / 16
 
     def get_image(self):
         self.image = pygame.Surface((PNC.buttonsize,PNC.buttonsize)).convert()
@@ -566,6 +602,10 @@ class Number_Tile(pygame.sprite.Sprite):
         self.render_font()
 
     def update(self):
+        if self.moving:
+            self.progress += self.animspeed
+            if self.progress >= self.width:
+                self.stop_move()
         self.x = PNC.buttonsize*self.i
         self.y = PNC.buttonsize*self.j
         if self.is_over((PNC.mousex,PNC.mousey)):
@@ -576,19 +616,17 @@ class Number_Tile(pygame.sprite.Sprite):
                 self.deselect()
 
     def is_over(self, (x,y)):
-        xb = (self.x <= x) and (x < self.x + self.rect.width)
-        yb = (self.y <= y) and (y < self.y + self.rect.height)
+        xb = (self.x <= x) and (x < self.x + self.width)
+        yb = (self.y <= y) and (y < self.y + self.height)
         return xb and yb
 
     def select(self):
         self.selected = 1
         self.fontcolor = (250,0,0)
-        self.render_font()
 
     def deselect(self):
         self.selected = 0
         self.fontcolor = self.dfontcolor
-        self.render_font()
 
     def on_click(self):
         print 'Clicked!'
@@ -596,7 +634,7 @@ class Number_Tile(pygame.sprite.Sprite):
         print self.color
         if d and self.color in PNC.matches[PNC.tool.color]:
             print self.color
-            self.move(d)
+            self.init_move(d)
             PNC.sounds['punch'].play()
         else:
             PNC.sounds['whiff'].play()
@@ -608,10 +646,16 @@ class Number_Tile(pygame.sprite.Sprite):
                 if not tile:
                     return (i ,j)
 
-    def move(self, (i, j)):
-        print True
-        self.i += i
-        self.j += j
+    def init_move(self, (i, j)):
+        self.moving = 1
+        self.nexti = self.i + i
+        self.nextj = self.j + j
+
+    def stop_move(self):
+        self.moving = 0
+        self.progress = 0
+        self.i = self.nexti
+        self.j = self.nextj
 
 if __name__ == "__main__" :
     PNC = PNC()
