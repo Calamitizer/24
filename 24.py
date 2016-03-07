@@ -44,6 +44,7 @@ class PNC:
         }
         self.grid = 2
         self.buttonsize = 256
+        self.outline = 4
         self.colordirs = {
             'R': (0, self.buttonsize/4),
             'B': tuple(map(int, ((self.buttonsize/4) * (-1 * math.sqrt(3./4.)),(self.buttonsize/4) * (-1./2.)))),
@@ -69,6 +70,7 @@ class PNC:
         self.init_tools()
         self.init_tiles()
         self.init_spaces()
+        self.init_drawer()
         self.mousex = 0
         self.mousey = 0
         pygame.mouse.set_visible(False)
@@ -103,10 +105,18 @@ class PNC:
         tools = ['A','B','C','D']
     
     def init_spaces(self):
+        self.spacelist = []
         self.spacegroup = pygame.sprite.Group()
         for i in xrange(self.grid):
             for j in xrange(self.grid):
-                self.spacegroup.add(Tile_Space(i, j))
+                space = Tile_Space(i, j)
+                self.spacelist.append(space)
+                self.spacegroup.add(space)
+                
+    def init_drawer(self):
+        self.drawergroup = pygame.sprite.GroupSingle()
+        self.drawer = Drawer()
+        self.drawergroup.add(self.drawer)
     
     def init_menu(self):
         self.menuoptions = pygame.sprite.Group()
@@ -174,6 +184,11 @@ class PNC:
         
     def to1D(self, i, j):
         return (self.grid*j) + i
+    
+    def space_by_coord(self, (i, j)):
+        for space in self.spacelist:
+            if space.i == i and space.j == j:
+                return space
     
     def shuffle(self, s):
         self.won = 0
@@ -270,6 +285,7 @@ class PNC:
         self.mousex, self.mousey = pygame.mouse.get_pos()
         self.tilegroup.update()
         self.spacegroup.update()
+        self.drawergroup.update()
         self.toolgroup.update()
         self.cursor.update()
         self.check_win()
@@ -278,7 +294,8 @@ class PNC:
         if not self.paused:
             self.tilegroup.clear(self.screen, self.background)
             self.screen.blit(self.background, (0,0))
-            self.spacegroup.draw(self.screen)
+            #self.spacegroup.draw(self.screen)
+            self.drawergroup.draw(self.screen)
             self.toolgroup.draw(self.screen)
             #self.targetgroup.draw(self.screen)
             #self.sprites.update()
@@ -471,6 +488,120 @@ class Tool(pygame.sprite.Sprite):
         pos = (PNC.mousex, PNC.mousey)
         self.rect.center = pos
 
+class Drawer(pygame.sprite.Sprite):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+        self.fontstyle = None
+        self.fontsize = 72
+        self.outline = 4
+        self.font = pygame.font.Font(self.fontstyle, self.fontsize)
+        self.width = PNC.buttonsize * PNC.grid
+        self.height = PNC.buttonsize * PNC.grid
+        self.get_image()
+        
+    def get_image(self):
+        self.get_spaces()
+        self.get_tiles()
+        self.get_active_crects()
+        self.image = pygame.Surface((self.width, self.height))
+        for space in self.inactivespaces:
+            tile = pygame.Surface((PNC.buttonsize, PNC.buttonsize)).convert()
+            color = reduce(lambda x,y: x + y, map(lambda x: PNC.allcolors[x], space.colors), PNC.allcolors['K'])
+            tile.fill(color.h)
+            self.image.blit(tile, (space.i * PNC.buttonsize, space.j * PNC.buttonsize))
+        for cr in self.activecrects.crs:
+            r = pygame.Surface((cr.width, cr.height)).convert()
+            r.fill(cr.c.h)
+            self.image.blit(r, (cr.x, cr.y))
+        for tile in PNC.tilelist:
+            text = self.get_number_text(tile.color, `tile.n`)
+            rect = text.get_rect()
+            x = tile.x + PNC.buttonsize/2 - PNC.colordirs[tile.color][0]
+            y = tile.y + PNC.buttonsize/2 - PNC.colordirs[tile.color][1]
+            rect.center = (x, y)
+            self.image.blit(text, rect)
+        self.rect = self.image.get_rect()
+        
+    def get_spaces(self):
+        self.inactivespaces = []
+        self.activespaces = []
+        for i in xrange(PNC.grid):
+            for j in xrange(PNC.grid):
+                active = 0
+                for tile in PNC.tilelist:
+                    if tile.moving:
+                        if (tile.i == i and tile.j == j) or (tile.nexti == i and tile.nextj == j):
+                            active = 1
+                if active:
+                    self.activespaces.append(PNC.space_by_coord((i, j)))
+                else:
+                    self.inactivespaces.append(PNC.space_by_coord((i, j)))
+        
+    def get_tiles(self):
+        self.activetiles = []
+        for tile in PNC.tilelist:
+            if (PNC.space_by_coord((tile.i, tile.j)) in self.activespaces) or tile.moving:
+                self.activetiles.append(tile)
+
+    def get_active_crects(self):
+        self.activecrects = Colored_Rect_Set([])
+        for tile in self.activetiles:
+            self.activecrects += Colored_Rect(tile.x, tile.y, PNC.buttonsize, PNC.buttonsize, PNC.tilecolors[tile.color])
+
+    def get_number_text(self, c, n):
+        fontcolor = PNC.tilecolors[c]
+        outlinecolor = PNC.allcolors['K']
+        notcolor = Color((127,127,127))
+        colortext = self.font.render(n, 0, fontcolor.h, notcolor.h)
+        colortext.set_colorkey(notcolor.h)
+        outlinetext = self.font.render(n, 0, outlinecolor.h, notcolor.h)
+        outlinetext.set_colorkey(notcolor.h)
+        size = (colortext.get_width() + PNC.outline*2, colortext.get_height() + self.outline*2)
+        image = pygame.Surface(size, 16)
+        image.set_colorkey(notcolor.h)
+        image.fill(notcolor.h)
+        
+        coords = [(i, j) for (i, j) in itertools.product(xrange(PNC.outline*2+1), xrange(PNC.outline*2+1)) if 1 <= abs(i - PNC.outline) + abs(j - PNC.outline) <= PNC.outline]
+        
+        for coord in coords:
+            image.blit(outlinetext, coord)
+        
+        image.blit(colortext, (PNC.outline,PNC.outline))
+        return image
+
+    def update(self):
+        self.get_image()
+
+class Colored_Rect(pygame.Rect):
+    def __init__(self, x, y, w, h, c):
+        pygame.Rect.__init__(self, x, y, w, h)
+        self.c = c
+        
+    def __hash__(self):
+        return hash((self.x, self.y, self.w, self.h, self.c))
+
+class Colored_Rect_Set(pygame.sprite.Sprite):
+    def __init__(self, crs):
+        self.crs = crs
+        
+    def __len__(self):
+        return len(self.crs)
+        
+    def __add__(self, rhs):
+        if isinstance(rhs, Colored_Rect):
+            dirties = [cr for cr in self.crs if cr.colliderect(rhs)]
+            crs = self.crs
+            crs.append(rhs)
+            return Colored_Rect_Set(crs)
+        elif isinstance(rhs, Colored_Rect_Set):
+            if len(rhs) == 0:
+                return self
+            else:
+                return (self + rhs.crs[0]) + Colored_Rect_Set(rhs.crs[1:])
+    
+    def __radd__(self, lhs):
+        return self + lhs
+
 class Tile_Space(pygame.sprite.Sprite):
     def __init__(self, i, j):
         pygame.sprite.Sprite.__init__(self)
@@ -490,6 +621,19 @@ class Tile_Space(pygame.sprite.Sprite):
         self.get_colors()
         self.get_image()
 
+    def assess_tiles(self):
+        self.stationary = []
+        self.outgoing = []
+        self.incoming = []
+        for c in PNC.colorlists:
+            for tile in PNC.colorlists[c]:
+                if not tile.moving and tile.i == self.i and tile.j == self.j:
+                    self.stationary.append(tile)
+                elif tile.moving and tile.i == self.i and tile.j == self.j:
+                    self.outgoing.append(tile)
+                elif tile.moving and tile.nexti == self.i and tile.nextj == self.j:
+                    self.incoming.append(tile)
+
     def get_colors(self):
         for c in PNC.tilecolors:
             tile = PNC.find_tile(c, self.i, self.j)
@@ -507,6 +651,7 @@ class Tile_Space(pygame.sprite.Sprite):
             self.colors.remove(c)
 
     def get_image(self):
+        self.assess_tiles()
         self.image = pygame.Surface((PNC.buttonsize,PNC.buttonsize)).convert()
         color = PNC.allcolors['W'] - reduce(lambda x,y: x + y, map(lambda x: PNC.allcolors[x], self.colors), PNC.allcolors['K'])
         self.image.fill(color.h)
@@ -606,8 +751,8 @@ class Number_Tile(pygame.sprite.Sprite):
             self.progress += self.animspeed
             if self.progress >= self.width:
                 self.stop_move()
-        self.x = PNC.buttonsize*self.i
-        self.y = PNC.buttonsize*self.j
+        self.x = PNC.buttonsize*self.i + self.progress * (self.nexti - self.i)
+        self.y = PNC.buttonsize*self.j + self.progress * (self.nextj - self.j)
         if self.is_over((PNC.mousex,PNC.mousey)):
             if self.selected == 0:
                 self.select()
