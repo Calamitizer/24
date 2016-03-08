@@ -51,8 +51,8 @@ class PNC:
             'G': tuple(map(int, ((self.buttonsize/4) * (math.sqrt(3./4.)),(self.buttonsize/4) * (-1./2.))))}
         self.size = self.width, self.height = self.grid * self.buttonsize, self.grid * self.buttonsize
         self.colorkeys = {K_1: 'C', K_2: 'M', K_3: 'Y', K_4: 'W'}
-        self.version = '0.01'
-        self.title = '27' + ' v' + self.version 
+        self.version = '1.0.0'
+        self.title = 'Color Confinement' + ' v' + self.version 
         self.fps = 30
         self.paused = 0
 
@@ -540,7 +540,7 @@ class Drawer(pygame.sprite.Sprite):
     def get_tiles(self):
         self.activetiles = []
         for tile in PNC.tilelist:
-            if (PNC.space_by_coord((tile.i, tile.j)) in self.activespaces) or tile.moving:
+            if (PNC.space_by_coord((tile.i, tile.j)) in self.activespaces):
                 self.activetiles.append(tile)
 
     def get_active_crects(self):
@@ -589,10 +589,32 @@ class Colored_Rect_Set(pygame.sprite.Sprite):
         
     def __add__(self, rhs):
         if isinstance(rhs, Colored_Rect):
-            dirties = [cr for cr in self.crs if cr.colliderect(rhs)]
-            crs = self.crs
-            crs.append(rhs)
-            return Colored_Rect_Set(crs)
+            if len(self) == 0:
+                return Colored_Rect_Set([rhs])
+            b = rhs
+            print 'crs: '
+            for i in self.crs:
+                print i
+                #print `i.x` + ', ' + `i.y` + ', ' + `i.w` + ', ' + `i.h` + ', ' + `i.c`
+            cleans = [cr for cr in self.crs if not b.colliderect(cr)]
+            dirties = [cr for cr in self.crs if b.colliderect(cr)]
+            if len(dirties) == 0:
+                return Colored_Rect_Set(cleans + [b])
+            a = dirties.pop(0)
+            xps = sorted([a.x, a.x + a.width, b.x, b.x + b.width])
+            yps = sorted([a.y, a.y + a.height, b.y, b.y + b.height])
+            for i in xrange(len(xps) - 1):
+                for j in xrange(len(yps) - 1):
+                    x = xps[i]
+                    y = yps[j]
+                    w = xps[i+1] - xps[i]
+                    h = yps[j+1] - yps[j]
+                    c = reduce(lambda x,y: x + y, [source.c for source in [a, b] if source.colliderect(x, y, w, h)], PNC.allcolors['K'])
+                    #c = Color((127,127,127))
+                    if w > 0 and h > 0:
+                        new = Colored_Rect(x, y, w, h, c)
+                        cleans += [new]
+            return Colored_Rect_Set(cleans) + Colored_Rect_Set(dirties)
         elif isinstance(rhs, Colored_Rect_Set):
             if len(rhs) == 0:
                 return self
@@ -715,7 +737,7 @@ class Number_Tile(pygame.sprite.Sprite):
         self.nexti = 0
         self.nextj = 0
         self.progress = 0
-        self.animspeed = self.width / 16
+        self.animspeed = 4 #self.width / 16
 
     def get_image(self):
         self.image = pygame.Surface((PNC.buttonsize,PNC.buttonsize)).convert()
