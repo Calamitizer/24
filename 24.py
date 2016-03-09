@@ -49,7 +49,14 @@ class PNC:
             'R': (0, self.buttonsize/4),
             'B': tuple(map(int, ((self.buttonsize/4) * (-1 * math.sqrt(3./4.)),(self.buttonsize/4) * (-1./2.)))),
             'G': tuple(map(int, ((self.buttonsize/4) * (math.sqrt(3./4.)),(self.buttonsize/4) * (-1./2.))))}
-        self.size = self.width, self.height = self.grid * self.buttonsize, self.grid * self.buttonsize
+        self.shelfheight = 128
+        self.size = self.width, self.height = self.grid * self.buttonsize, self.grid * self.buttonsize + self.shelfheight
+        self.toolorder = [
+            ('C', 1 * self.width / 5, 0),
+            ('M', 2 * self.width / 5, 0),
+            ('Y', 3 * self.width / 5, 0),
+            ('W', 4 * self.width / 5, 0),
+        ]
         self.colorkeys = {K_1: 'C', K_2: 'M', K_3: 'Y', K_4: 'W'}
         self.version = '1.0.0'
         self.title = 'Color Confinement' + ' v' + self.version 
@@ -68,9 +75,11 @@ class PNC:
         self.load_sounds()
         self.init_sprites()
         self.init_tools()
+        self.init_tool_buttons()
+        self.init_shelf()
         self.init_tiles()
         self.init_spaces()
-        self.init_drawer()
+        self.init_board()
         self.mousex = 0
         self.mousey = 0
         pygame.mouse.set_visible(False)
@@ -113,10 +122,10 @@ class PNC:
                 self.spacelist.append(space)
                 self.spacegroup.add(space)
                 
-    def init_drawer(self):
-        self.drawergroup = pygame.sprite.GroupSingle()
-        self.drawer = Drawer()
-        self.drawergroup.add(self.drawer)
+    def init_board(self):
+        self.boardgroup = pygame.sprite.GroupSingle()
+        self.board = Board()
+        self.boardgroup.add(self.board)
     
     def init_menu(self):
         self.menuoptions = pygame.sprite.Group()
@@ -138,7 +147,6 @@ class PNC:
         self.change_tool('W')
         
     def change_tool(self, c):
-        print c
         self.remove_tool()
         self.tool = Tool(c)
         self.toolgroup.add(self.tool)
@@ -149,6 +157,18 @@ class PNC:
         except AttributeError:
             pass
         self.tool = None
+
+    def init_tool_buttons(self):
+        self.toolbuttongroup = pygame.sprite.Group()
+        for (c, x, y) in PNC.toolorder:
+            button = Tool_Button(c, x, y)
+            self.toolbuttongroup.add(button)
+            self.clickables.add(button)
+
+    def init_shelf(self):
+        self.shelf = Tool_Shelf()
+        self.shelfgroup = pygame.sprite.Group()
+        self.shelfgroup.add(self.shelf)
 
     def init_tiles(self):
         self.tilelist = []
@@ -198,7 +218,6 @@ class PNC:
             if s:
                 random.shuffle(layout)
                 if not self.is_solvable(layout):
-                    print `False` + `c` + ': ' + `[tile.n if tile != None else 0 for tile in layout]`
                     n = layout.index(None)
                     if n == 0:
                         i, j = 1, 2
@@ -208,7 +227,6 @@ class PNC:
                         i, j = 0, 1
                     layout[j], layout[i] = layout[i], layout[j]
             self.layoutdict[c] = layout
-            print `c` + ': ' + `[tile.n if tile != None else 0 for tile in layout]`
             for i, tile in enumerate(layout):
                 if tile != None:
                     tile.i, tile.j = self.to2D(i)
@@ -265,7 +283,7 @@ class PNC:
                 if event.key in self.colorkeys:
                     self.change_tool(self.colorkeys[event.key])
             elif event.type == MOUSEBUTTONDOWN:
-                clicked = [_ for _ in self.clickables if _.is_over((self.mousex, self.mousey))]
+                clicked = [_ for _ in self.clickables if _.rect.collidepoint((self.mousex, self.mousey))]
                 for s in clicked:
                     s.on_click()
             elif event.type == MOUSEBUTTONUP:
@@ -285,7 +303,9 @@ class PNC:
         self.mousex, self.mousey = pygame.mouse.get_pos()
         self.tilegroup.update()
         self.spacegroup.update()
-        self.drawergroup.update()
+        self.boardgroup.update()
+        self.toolbuttongroup.update()
+        self.shelfgroup.update()
         self.toolgroup.update()
         self.cursor.update()
         self.check_win()
@@ -295,7 +315,9 @@ class PNC:
             self.tilegroup.clear(self.screen, self.background)
             self.screen.blit(self.background, (0,0))
             #self.spacegroup.draw(self.screen)
-            self.drawergroup.draw(self.screen)
+            self.boardgroup.draw(self.screen)
+            self.shelfgroup.draw(self.screen)
+            self.toolbuttongroup.draw(self.screen)
             self.toolgroup.draw(self.screen)
             #self.targetgroup.draw(self.screen)
             #self.sprites.update()
@@ -488,7 +510,55 @@ class Tool(pygame.sprite.Sprite):
         pos = (PNC.mousex, PNC.mousey)
         self.rect.center = pos
 
-class Drawer(pygame.sprite.Sprite):
+class Tool_Button(pygame.sprite.Sprite):
+    def __init__(self, color, cx, cy):
+        pygame.sprite.Sprite.__init__(self)
+        self.color = color
+        self.size = 64
+        self.x = 0
+        self.y = 0
+        self.cx = cx
+        self.cy = cy + PNC.height - PNC.shelfheight / 2
+        self.selected = 0
+        self.get_image()
+        
+    def get_image(self):
+        self.image = pygame.Surface((self.size, self.size)).convert()
+        colorkey = self.image.get_at((0,0))
+        self.image.set_colorkey(colorkey, RLEACCEL)
+        pygame.draw.circle(self.image, (1,1,1), (self.size/2, self.size/2), self.size/2)
+        pygame.draw.circle(self.image, PNC.toolcolors[self.color].h, (self.size/2, self.size/2), self.size/2 - 4)
+        self.rect = self.image.get_rect()
+        self.rect.center = (self.cx, self.cy)
+        (self.x, self.y) = self.rect.topleft
+        
+    def is_over(self, (x,y)):
+        xb = (self.x <= x) and (x < self.x + self.rect.width)
+        yb = (self.y <= y) and (y < self.y + self.rect.height)
+        return xb and yb
+        
+    def on_click(self):
+        print 'clicked!'
+        PNC.change_tool(self.color)
+
+class Tool_Shelf(pygame.sprite.Sprite):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+        self.width = PNC.width
+        self.height = PNC.shelfheight
+        self.color = Color((127,127,127))
+        self.get_image()
+        
+    def get_image(self):
+        self.image = pygame.Surface((self.width, self.height))
+        self.image.fill(self.color.h)
+        self.rect = self.image.get_rect()
+        self.rect.bottomleft = (0, PNC.height)
+            
+    def update(self):
+        self.get_image()
+
+class Board(pygame.sprite.Sprite):
     def __init__(self):
         pygame.sprite.Sprite.__init__(self)
         self.fontstyle = None
@@ -592,10 +662,6 @@ class Colored_Rect_Set(pygame.sprite.Sprite):
             if len(self) == 0:
                 return Colored_Rect_Set([rhs])
             b = rhs
-            print 'crs: '
-            for i in self.crs:
-                print i
-                #print `i.x` + ', ' + `i.y` + ', ' + `i.w` + ', ' + `i.h` + ', ' + `i.c`
             cleans = [cr for cr in self.crs if not b.colliderect(cr)]
             dirties = [cr for cr in self.crs if b.colliderect(cr)]
             if len(dirties) == 0:
@@ -737,7 +803,8 @@ class Number_Tile(pygame.sprite.Sprite):
         self.nexti = 0
         self.nextj = 0
         self.progress = 0
-        self.animspeed = 4 #self.width / 16
+        self.animspeed = self.width / 16
+        self.get_image()
 
     def get_image(self):
         self.image = pygame.Surface((PNC.buttonsize,PNC.buttonsize)).convert()
@@ -775,6 +842,7 @@ class Number_Tile(pygame.sprite.Sprite):
                 self.stop_move()
         self.x = PNC.buttonsize*self.i + self.progress * (self.nexti - self.i)
         self.y = PNC.buttonsize*self.j + self.progress * (self.nextj - self.j)
+        self.rect.topleft = self.x, self.y
         if self.is_over((PNC.mousex,PNC.mousey)):
             if self.selected == 0:
                 self.select()
@@ -796,11 +864,8 @@ class Number_Tile(pygame.sprite.Sprite):
         self.fontcolor = self.dfontcolor
 
     def on_click(self):
-        print 'Clicked!'
         d = self.find_free()
-        print self.color
         if d and self.color in PNC.matches[PNC.tool.color]:
-            print self.color
             self.init_move(d)
             PNC.sounds['punch'].play()
         else:
